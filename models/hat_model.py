@@ -1,132 +1,79 @@
-import torch
-import torch.nn.functional as F
-from PIL import Image
+from PIL import Image, ImageOps
 import numpy as np
-from typing import Union, Tuple
-import sys
+from typing import Union
 import os
 
-# 添加HAT模型路径
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'external', 'HAT'))
+# 从我们创建的模块中导入 HATInference 类
+from models.HAT.hat_inference import HATInference
+
+# 在这里定义模型的固定路径，或者从全局配置中读取
+# 这使得主流程代码更加干净
+CONFIG_FILE_PATH = "models/HAT/HAT-L_SRx4_ImageNet-pretrain.yml"
+
 
 class HATModel:
-    """HAT模型包装器，用于保真度超分辨率"""
-    
-    def __init__(self, model_path: str, device: str = "cuda"):
+    """
+    一个高层封装，用于调用 HAT 超分模型。
+    它在内部实例化并持有一个 HATInference 对象。
+    """
+
+    def __init__(self, hat_model_path: str, device: str = 'cuda'):
         """
-        初始化HAT模型
-        
+        初始化模型加载器。
+
         Args:
-            model_path: HAT模型权重路径
-            device: 计算设备
+            hat_model_path (str): 要加载的 HAT 模型权重 (.pth) 文件路径。
+            device (str): 使用的设备, e.g., 'cuda' or 'cpu'
         """
-        self.device = device
-        self.model_path = model_path
-        self.model = None
-        self._load_model()
-    
-    def _load_model(self):
-        """加载HAT模型"""
+        print("正在初始化 HAT 模型...")
+
+        if not os.path.exists(hat_model_path):
+            raise FileNotFoundError(f"指定的 HAT 模型权重文件未找到: {hat_model_path}")
+
         try:
-            # 这里需要根据实际的HAT模型结构进行适配
-            # 由于HAT是外部依赖，这里提供接口框架
-            print(f"正在加载HAT模型: {self.model_path}")
-            
-            # 模拟模型加载过程
-            # 实际使用时需要导入HAT的具体实现
-            # from hat.models import HAT
-            # self.model = HAT()
-            # self.model.load_state_dict(torch.load(self.model_path))
-            
-            print("HAT模型加载完成")
-            
-        except Exception as e:
-            print(f"HAT模型加载失败: {e}")
-            raise
-    
-    def preprocess_image(self, image: Union[str, Image.Image, np.ndarray]) -> torch.Tensor:
-        """
-        预处理输入图像
-        
-        Args:
-            image: 输入图像（路径、PIL图像或numpy数组）
-            
-        Returns:
-            预处理后的tensor
-        """
-        if isinstance(image, str):
-            image = Image.open(image).convert('RGB')
-        elif isinstance(image, np.ndarray):
-            image = Image.fromarray(image).convert('RGB')
-        
-        # 转换为tensor并归一化
-        image_tensor = torch.from_numpy(np.array(image)).float() / 255.0
-        image_tensor = image_tensor.permute(2, 0, 1).unsqueeze(0)  # CHW -> BCHW
-        
-        return image_tensor.to(self.device)
-    
-    def postprocess_image(self, tensor: torch.Tensor) -> np.ndarray:
-        """
-        后处理输出tensor为图像
-        
-        Args:
-            tensor: 模型输出的tensor
-            
-        Returns:
-            处理后的numpy数组
-        """
-        # 确保值在[0, 1]范围内
-        tensor = torch.clamp(tensor, 0, 1)
-        
-        # 转换为numpy数组
-        image = tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
-        image = (image * 255).astype(np.uint8)
-        
-        return image
-    
-    def upscale(self, image: Union[str, Image.Image, np.ndarray], 
-                target_size: Tuple[int, int] = None) -> np.ndarray:
-        """
-        执行超分辨率
-        
-        Args:
-            image: 输入低分辨率图像
-            target_size: 目标尺寸 (width, height)
-            
-        Returns:
-            超分辨率后的图像
-        """
-        # 预处理
-        input_tensor = self.preprocess_image(image)
-        
-        # 获取原始尺寸
-        _, _, h, w = input_tensor.shape
-        
-        # 计算目标尺寸
-        if target_size is None:
-            target_h, target_w = h * 4, w * 4  # 默认4倍放大
-        else:
-            target_w, target_h = target_size
-        
-        # 执行超分辨率推理
-        with torch.no_grad():
-            # 这里需要调用实际的HAT模型推理
-            # output_tensor = self.model(input_tensor)
-            
-            # 临时使用双线性插值作为占位符
-            output_tensor = F.interpolate(
-                input_tensor, 
-                size=(target_h, target_w), 
-                mode='bilinear', 
-                align_corners=False
+            # 在内部实例化底层的 HATInference，并传入动态的模型路径
+            self.predictor = HATInference(
+                config_path=CONFIG_FILE_PATH,
+                model_path=hat_model_path,  # 使用传入的参数
+                device=device
             )
-        
-        # 后处理
-        output_image = self.postprocess_image(output_tensor)
-        
-        return output_image
-    
-    def __call__(self, image: Union[str, Image.Image, np.ndarray], 
-                 target_size: Tuple[int, int] = None) -> np.ndarray:
-        """便捷调用接口"""
-        return self.upscale(image, target_size) 
+            print(f"HAT 模型已从 '{hat_model_path}' 成功加载。")
+        except Exception as e:
+            print(f"HAT 模型初始化失败。请检查路径配置和依赖。")
+            raise e
+
+    def upscale(self, lr_image: Union[str, Image.Image, np.ndarray], target_size: int = None) -> np.ndarray:
+        """
+        对输入的低分辨率图像进行超分。
+
+        Args:
+            lr_image: 低分辨率输入，可以是文件路径(str), PIL.Image, 或 NumPy 数组。
+            target_size: (可选) 如果提供，会将超分后的图像缩放到这个尺寸。
+
+        Returns:
+            超分辨率后的图像，以 NumPy 数组 (H, W, C) 格式返回。
+        """
+        # 1. 统一输入格式为 PIL.Image
+        if isinstance(lr_image, str):
+            try:
+                image_pil = Image.open(lr_image)
+            except FileNotFoundError:
+                raise FileNotFoundError(f"输入图片路径未找到: {lr_image}")
+        elif isinstance(lr_image, np.ndarray):
+            image_pil = Image.fromarray(lr_image)
+        elif isinstance(lr_image, Image.Image):
+            image_pil = lr_image
+        else:
+            raise TypeError(f"不支持的输入类型: {type(lr_image)}")
+
+        # 2. 校正 EXIF 方向
+        image_pil = ImageOps.exif_transpose(image_pil)
+
+        # 3. 调用底层推理接口
+        # predictor.infer 接收并返回 PIL.Image
+        sr_image_pil = self.predictor.infer(image_pil)
+
+        # 4. 转换为 NumPy 数组
+        sr_image_np = np.array(sr_image_pil)
+
+        return sr_image_np

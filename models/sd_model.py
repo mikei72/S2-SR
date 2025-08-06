@@ -28,13 +28,15 @@ class SDModel:
         """加载SD模型"""
         try:
             print(f"正在加载Stable Diffusion模型: {self.model_path}")
-            
+
+            print(self.device)
+
             # 加载img2img pipeline
             self.pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
                 self.model_path,
                 torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
                 safety_checker=None,
-                requires_safety_checker=False
+                requires_safety_checker=True
             )
             
             # 加载LoRA权重（如果提供）

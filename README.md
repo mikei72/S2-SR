@@ -38,21 +38,26 @@
 S2-SR/
 ├── config/
 │   └── config.py              # 配置文件
+├── examples/
+│   ├── outputs/               # 测试输出
 ├── models/
+│   ├── HAT                    # HAT模型
+│   ├── ram                    # RAM模型
+│   ├── weights                # 权重
 │   ├── hat_model.py           # HAT模型包装器
-│   ├── ram_model.py           # RAM模型包装器
 │   └── sd_model.py            # SD模型包装器
 ├── pipeline/
 │   └── super_resolution_pipeline.py  # 核心处理流程
-├── utils/
-│   └── image_utils.py         # 图像处理工具
-├── evaluation/
-│   └── metrics.py             # 评估指标
 ├── training/
 │   └── lora_trainer.py        # LoRA训练模块
+├── utils/
+│   ├── image_utils.py         # 图像处理工具
+│   └── metrics_utils          # 评估指标
+├── demo.py                    # 测试demo
+├── download.py                # 下载权重脚本
 ├── main.py                    # 主程序入口
-├── requirements.txt           # 依赖包列表
-└── README.md                  # 项目说明
+├── README.md                  # 项目说明
+└── requirements.txt           # 依赖包列表
 ```
 
 ## 安装指南
@@ -67,7 +72,7 @@ S2-SR/
 
 ```bash
 # 克隆项目
-git clone <repository_url>
+git clone https://github.com/mikei72/S2-SR
 cd S2-SR
 
 # 创建虚拟环境
@@ -82,30 +87,25 @@ pip install -r requirements.txt
 
 ### 3. 下载预训练模型
 
-#### HAT模型
-```bash
-# 下载HAT-L模型权重
-wget https://github.com/XPixelGroup/HAT/releases/download/v1.0/hat_l.pth
-mkdir -p models/hat
-mv hat_l.pth models/hat/
-```
+通过网盘分享的文件：数据集
+链接: https://pan.baidu.com/s/1_uwMaxgZ3QYKXvbHp8D2og?pwd=3ryp 提取码: 3ryp 
+--来自百度网盘超级会员v3的分享
 
-#### RAM模型
-```bash
-# 下载RAM模型权重
-wget https://huggingface.co/xdecoder/RAM/resolve/main/ram_swin_large_14m.pth
-mkdir -p models/ram
-mv ram_swin_large_14m.pth models/ram/
-```
-
-#### Stable Diffusion模型
-```bash
-# 下载SD v1.5模型
-git lfs install
-git clone https://huggingface.co/runwayml/stable-diffusion-v1-5 models/stable-diffusion-v1-5
-```
+下载其中的HAT、RAM、和Stable Diffusion权重
+放在 models/weights 目录下
 
 ## 使用方法
+★★★★★★★★★★当前运行demo.py
+
+
+
+
+
+
+
+
+
+
 
 ### 1. 单张图像处理
 

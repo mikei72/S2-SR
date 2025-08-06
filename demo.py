@@ -17,7 +17,6 @@ sys.path.append(str(Path(__file__).parent.parent))
 from config.config import Config
 from pipeline.super_resolution_pipeline import SuperResolutionPipeline
 from utils.image_utils import load_image, save_image, create_low_resolution_image
-from evaluation.metrics import MetricsCalculator
 
 def demo_single_image_processing():
     """演示单张图像处理"""
@@ -26,7 +25,7 @@ def demo_single_image_processing():
     print("=" * 60)
     
     # 创建测试图像（如果没有的话）
-    test_image_path = "examples/test_image.jpg"
+    test_image_path = "examples/outputs/test.png"
     if not os.path.exists(test_image_path):
         print("创建测试图像...")
         # 这里可以创建一个简单的测试图像
@@ -74,12 +73,12 @@ def demo_parameter_tuning():
     print("演示2: 参数调优 - 不同strength值的效果")
     print("=" * 60)
     
-    test_image_path = "examples/test_image.jpg"
+    test_image_path = "test_image.jpg"
     if not os.path.exists(test_image_path):
         print("跳过参数调优演示（需要测试图像）")
         return
     
-    output_dir = "examples/parameter_tuning"
+    output_dir = "parameter_tuning"
     os.makedirs(output_dir, exist_ok=True)
     
     # 创建处理流程
@@ -317,7 +316,7 @@ def main():
         print(f"演示1失败: {e}")
     
     # 演示2: 参数调优
-    try:
+    """try:
         demo_parameter_tuning()
     except Exception as e:
         print(f"演示2失败: {e}")
@@ -342,7 +341,7 @@ def main():
     print("1. 将您的测试图像放在 examples/test_image.jpg")
     print("2. 运行 python examples/demo.py")
     print("3. 查看 examples/outputs/ 目录中的结果")
-    print("4. 调整 strength 参数以获得最佳效果")
+    print("4. 调整 strength 参数以获得最佳效果")"""
 
 if __name__ == "__main__":
     main() 

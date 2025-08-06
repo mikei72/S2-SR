@@ -8,9 +8,9 @@ class Config:
     PROJECT_ROOT = Path(__file__).parent.parent
     
     # 模型路径配置
-    HAT_MODEL_PATH = os.getenv("HAT_MODEL_PATH", "models/hat/HAT-L_SRx4_ImageNet-pretrain.pth")
-    RAM_MODEL_PATH = os.getenv("RAM_MODEL_PATH", "models/ram/ram_swin_large_14m.pth")
-    SD_MODEL_PATH = os.getenv("SD_MODEL_PATH", "models/stable-diffusion-v1-5")
+    HAT_MODEL_PATH = os.getenv("HAT_MODEL_PATH", r"models\weights\HAT-L_SRx4_ImageNet-pretrain.pth")
+    RAM_MODEL_PATH = os.getenv("RAM_MODEL_PATH", r"models\weights\ram_swin_large_14m.pth")
+    SD_MODEL_PATH = os.getenv("SD_MODEL_PATH", r"models\weights\stable-diffusion-v1-5")
     
     # 输出目录
     OUTPUT_DIR = PROJECT_ROOT / "outputs"
@@ -51,9 +51,9 @@ class Config:
         directories = [
             cls.OUTPUT_DIR,
             cls.TEMP_DIR,
-            cls.PROJECT_ROOT / "models" / "hat",
-            cls.PROJECT_ROOT / "models" / "ram", 
-            cls.PROJECT_ROOT / "models" / "stable-diffusion-v1-5",
+            # cls.PROJECT_ROOT / "models" / "hat",
+            # cls.PROJECT_ROOT / "models" / "ram",
+            # cls.PROJECT_ROOT / "models" / "stable-diffusion-v1-5",
             cls.PROJECT_ROOT / "logs",
             cls.PROJECT_ROOT / "checkpoints"
         ]

@@ -6,7 +6,9 @@ import os
 from pathlib import Path
 
 from models.hat_model import HATModel
-from models.ram_model import RAMModel
+from models.ram.models import ram
+from models.ram import get_transform
+from models.ram import inference_ram as inference
 from models.sd_model import SDModel
 from config.config import Config
 
@@ -45,12 +47,13 @@ class SuperResolutionPipeline:
         
         # 步骤2: 语义标签生成模型
         print("2. 加载RAM模型...")
-        self.ram_model = RAMModel(
-            ram_model_path, 
-            device,
-            confidence_threshold=Config.RAM_CONFIDENCE_THRESHOLD,
-            max_tags=Config.MAX_TAGS
+        self.ram_model = ram(
+            pretrained=ram_model_path,
+            image_size=384,
+            vit='swin_l'
         )
+        self.ram_model.eval()
+        self.ram_model.to(device)
         
         # 步骤3: 生成式精修模型
         print("3. 加载Stable Diffusion模型...")
@@ -92,10 +95,34 @@ class SuperResolutionPipeline:
         print("执行步骤2: 语义标签生成...")
         
         # 使用RAM模型生成标签
-        text_tags_prompt = self.ram_model.generate_prompt(image)
+        if  image.dtype == np.float32 or image.max() <= 1.0:
+            image = (image * 255).astype(np.uint8)
+
+        if image.shape[2] == 3:
+            image = image[:, :, ::-1]
+
+        pil_image = Image.fromarray(image)
+        transform = get_transform(image_size=384)
+        image_tensor = transform(pil_image).unsqueeze(0).to(self.device)
+
+        text_tags_prompt = inference(image_tensor, self.ram_model)
+        text_tags_prompt = text_tags_prompt[0].replace(" | ", ", ").replace("|", ",")
+
+        raw_tags = [t.strip().lower() for t in text_tags_prompt.split(",")]
+        tags = list(dict.fromkeys(raw_tags))
+
+        STOP_WORDS = {'object', 'thing', 'things', 'image', 'photo', 'picture', 'scene'}
+        filtered_tags = [t for t in tags if t not in STOP_WORDS and len(t) > 1]
+
+        subject_desc = ", ".join(filtered_tags)
+
+        positive_prompt = (
+            f"strengthen the textures and details related to {subject_desc} in the image, "
+            "highly detailed, photorealistic, realistic texture, sharp focus"
+        )
         
-        print(f"语义标签生成完成: {text_tags_prompt}")
-        return text_tags_prompt
+        print(f"语义标签生成完成: {positive_prompt}")
+        return positive_prompt
     
     def step3_generative_refinement(self, 
                                   hr_base: np.ndarray,
@@ -113,6 +140,13 @@ class SuperResolutionPipeline:
             最终的高分辨率图像
         """
         print("执行步骤3: 生成式精修...")
+
+        negative_prompt = (
+            "blurry, low resolution, pixelated, cartoon, painting, illustration, drawing, sketch, "
+            "anime, 3D render, CGI, computer graphic, fake, plastic look, glossy, over-saturated, "
+            "deformed, distorted, disfigured, bad anatomy, extra limbs, fused objects, "
+            "unrealistic texture, over-smooth, noise, watermark, text, logo, signature"
+        )
         
         # 使用SD模型进行精修
         hr_final = self.sd_model.refine_image(
@@ -120,7 +154,8 @@ class SuperResolutionPipeline:
             prompt=text_prompt,
             strength=strength,
             guidance_scale=Config.GUIDANCE_SCALE,
-            num_inference_steps=Config.NUM_INFERENCE_STEPS
+            num_inference_steps=Config.NUM_INFERENCE_STEPS,
+            negative_prompt=negative_prompt
         )
         
         print("生成式精修完成")
@@ -147,13 +182,13 @@ class SuperResolutionPipeline:
         
         # 步骤1: 保真度超分
         hr_base = self.step1_fidelity_upscaling(lr_image)
-        
+
         # 步骤2: 语义标签生成（使用LR图像）
-        text_prompt = self.step2_semantic_tagging(lr_image)
+        text_prompt = self.step2_semantic_tagging(hr_base)
         
         # 步骤3: 生成式精修
         hr_final = self.step3_generative_refinement(hr_base, text_prompt, strength)
-        
+
         # 保存中间结果（可选）
         if save_intermediate:
             self._save_intermediate_results(hr_base, text_prompt, output_path)
@@ -161,6 +196,12 @@ class SuperResolutionPipeline:
         # 保存最终结果
         if output_path:
             self._save_final_result(hr_final, output_path)
+
+        from utils.metrics_utils import calculate_metrics
+        metrics1 = calculate_metrics('examples/outputs/demo_result_hr_base.png', 'examples/outputs/gt.png', 4, True)
+        metrics2 = calculate_metrics('examples/outputs/demo_result.png', 'examples/outputs/gt.png', 4, True)
+        print(f'PSNR: {metrics1["psnr"]:.4f} dB, SSIM: {metrics1["ssim"]:.4f}')
+        print(f'PSNR: {metrics2["psnr"]:.4f} dB, SSIM: {metrics2["ssim"]:.4f}')
         
         # 返回结果和处理信息
         process_info = {
