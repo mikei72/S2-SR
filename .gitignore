@@ -214,8 +214,6 @@ __marimo__/
 *.tflite   
 *.bin      
 *.pb      
-*.safetensors  
-hat/
-ram/
-stable-diffusion-v1.5/
+*.safetensors
+stable-diffusion-v1-5/
 .idea/
