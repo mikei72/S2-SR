@@ -12,6 +12,8 @@ from models.ram import inference_ram as inference
 from models.sd_model import SDModel
 from config.config import Config
 
+from utils.prompt_optimizer import generate_optimized_prompt
+
 class SuperResolutionPipeline:
     """文本引导图像超分辨率处理流程"""
     
@@ -106,20 +108,8 @@ class SuperResolutionPipeline:
         image_tensor = transform(pil_image).unsqueeze(0).to(self.device)
 
         text_tags_prompt = inference(image_tensor, self.ram_model)
-        text_tags_prompt = text_tags_prompt[0].replace(" | ", ", ").replace("|", ",")
 
-        raw_tags = [t.strip().lower() for t in text_tags_prompt.split(",")]
-        tags = list(dict.fromkeys(raw_tags))
-
-        STOP_WORDS = {'object', 'thing', 'things', 'image', 'photo', 'picture', 'scene'}
-        filtered_tags = [t for t in tags if t not in STOP_WORDS and len(t) > 1]
-
-        subject_desc = ", ".join(filtered_tags)
-
-        positive_prompt = (
-            f"strengthen the textures and details related to {subject_desc} in the image, "
-            "highly detailed, photorealistic, realistic texture, sharp focus"
-        )
+        positive_prompt = generate_optimized_prompt(text_tags_prompt[0])
         
         print(f"语义标签生成完成: {positive_prompt}")
         return positive_prompt
@@ -142,10 +132,10 @@ class SuperResolutionPipeline:
         print("执行步骤3: 生成式精修...")
 
         negative_prompt = (
-            "blurry, low resolution, pixelated, cartoon, painting, illustration, drawing, sketch, "
-            "anime, 3D render, CGI, computer graphic, fake, plastic look, glossy, over-saturated, "
-            "deformed, distorted, disfigured, bad anatomy, extra limbs, fused objects, "
-            "unrealistic texture, over-smooth, noise, watermark, text, logo, signature"
+            "blurry, low quality, jpeg artifacts, deformed, ugly, duplicate, "
+            "morbid, mutilated, out of frame, extra fingers, mutated hands, "
+            "poorly drawn hands, poorly drawn face, bad anatomy, bad proportions, "
+            "extra limbs, cloned face, disfigured, gross proportions, malformed limbs"
         )
         
         # 使用SD模型进行精修
@@ -185,7 +175,7 @@ class SuperResolutionPipeline:
 
         # 步骤2: 语义标签生成（使用LR图像）
         text_prompt = self.step2_semantic_tagging(hr_base)
-        
+
         # 步骤3: 生成式精修
         hr_final = self.step3_generative_refinement(hr_base, text_prompt, strength)
 
@@ -197,11 +187,11 @@ class SuperResolutionPipeline:
         if output_path:
             self._save_final_result(hr_final, output_path)
 
-        from utils.metrics_utils import calculate_metrics
+        """from utils.metrics_utils import calculate_metrics
         metrics1 = calculate_metrics('examples/outputs/demo_result_hr_base.png', 'examples/outputs/gt.png', 4, True)
         metrics2 = calculate_metrics('examples/outputs/demo_result.png', 'examples/outputs/gt.png', 4, True)
         print(f'PSNR: {metrics1["psnr"]:.4f} dB, SSIM: {metrics1["ssim"]:.4f}')
-        print(f'PSNR: {metrics2["psnr"]:.4f} dB, SSIM: {metrics2["ssim"]:.4f}')
+        print(f'PSNR: {metrics2["psnr"]:.4f} dB, SSIM: {metrics2["ssim"]:.4f}')"""
         
         # 返回结果和处理信息
         process_info = {
@@ -219,15 +209,13 @@ class SuperResolutionPipeline:
     def _save_intermediate_results(self, hr_base: np.ndarray, text_prompt: str, output_path: str):
         """保存中间结果"""
         if output_path:
-            base_path = Path(output_path)
-            
             # 保存HR_base
             hr_base_pil = Image.fromarray(hr_base)
-            hr_base_path = base_path.parent / f"{base_path.stem}_hr_base{base_path.suffix}"
+            hr_base_path = output_path.replace("sr", "hr_base")
             hr_base_pil.save(hr_base_path)
             
             # 保存文本提示词
-            prompt_path = base_path.parent / f"{base_path.stem}_prompt.txt"
+            prompt_path = output_path.replace("sr", "prompt")
             with open(prompt_path, 'w', encoding='utf-8') as f:
                 f.write(text_prompt)
     
