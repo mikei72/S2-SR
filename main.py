@@ -179,95 +179,121 @@ def train_lora(train_data_dir: str,
     
     print("LoRA训练完成")
 
+
 def evaluate_results(gt_dir: str,
-                    pred_dir: str,
-                    output_dir: str = "evaluation_results",
-                    sr_prefix: str= "sr_"):
+                     pred_dir: str,
+                     output_dir: str = "evaluation_results",
+                     sr_prefix: str = "sr_"):
     """
-    评估超分辨率结果
-    
+    评估超分辨率结果，同时对比基础SR图像和最终SR图像。
+
     Args:
-        gt_dir: 真实高分辨率图像目录
-        pred_dir: 预测高分辨率图像目录
-        output_dir: 输出目录
+        gt_dir: 真实高分辨率图像目录。
+        pred_dir: 包含基础SR和最终SR图像的预测目录。
+        output_dir: 评估结果的输出目录。
+        sr_prefix: 最终SR图像的文件名前缀。
     """
-    print("开始评估超分辨率结果...")
+    print("开始评估超分辨率结果 (对比 Base vs Final SR)...")
 
     os.makedirs(output_dir, exist_ok=True)
-    
-    # 获取图像文件列表
+
     gt_files = sorted([f for f in os.listdir(gt_dir)
-               if f.lower().endswith(('.png', '.jpg', '.jpeg'))])
-    
+                       if f.lower().endswith(('.png', '.jpg', '.jpeg'))])
+
     if not gt_files:
         print(f"错误：在目录‘{gt_dir}’中未找到图像文件")
         return
-    
+
     all_results = []
 
-    print("-" * 60)
+    print("-" * 70)
     for gt_file in gt_files:
+        print(f"处理文件: {gt_file}")
         gt_path = os.path.join(gt_dir, gt_file)
 
-        # 查找对应的预测图像
-        pred_file = f"{sr_prefix}{gt_file}"  # 假设预测图像有"sr_"前缀
-        pred_path = os.path.join(pred_dir, pred_file)
-        
-        if not os.path.exists(pred_path):
-            print(f"  [警告] 跳过！ 未找到对应的预测图像： {pred_file}")
-            print("-" * 60)
+        # --- 查找并评估第一阶段的基础HR图像 (hr_base) ---
+        base_file = f"hr_base_{gt_file}"
+        base_path = os.path.join(pred_dir, base_file)
+
+        if not os.path.exists(base_path):
+            print(f"  [警告] 跳过！ 未找到对应的基础图像： {base_file}")
+            print("-" * 70)
             continue
 
-        metrics = calculate_metrics(
+        metrics_base = calculate_metrics(
+            sr_path=base_path,
+            gt_path=gt_path,
+            crop_border=4,
+            test_y_channel=True
+        )
+
+        # --- 查找并评估第二阶段的最终SR图像 ---
+        pred_file = f"{sr_prefix}{gt_file}"
+        pred_path = os.path.join(pred_dir, pred_file)
+
+        if not os.path.exists(pred_path):
+            print(f"  [警告] 跳过！ 未找到对应的最终SR图像： {pred_file}")
+            print("-" * 70)
+            continue
+
+        metrics_final = calculate_metrics(
             sr_path=pred_path,
             gt_path=gt_path,
             crop_border=4,
             test_y_channel=True
         )
 
-        if metrics:
-            print(f"  -PSNR: {metrics['psnr']:.4f} dB")
-            print(f"  -SSIM: {metrics['ssim']:.4f}")
+        # --- 打印并记录结果 ---
+        if metrics_base and metrics_final:
+            print(f"  - Base  -> PSNR: {metrics_base['psnr']:.4f} dB, SSIM: {metrics_base['ssim']:.4f}")
+            print(f"  - Final -> PSNR: {metrics_final['psnr']:.4f} dB, SSIM: {metrics_final['ssim']:.4f}")
 
             result_row = {
                 'filename': gt_file,
-                'psnr': metrics['psnr'],
-                'ssim': metrics['ssim'],
+                'psnr_base': metrics_base['psnr'],
+                'ssim_base': metrics_base['ssim'],
+                'psnr_final_sr': metrics_final['psnr'],
+                'ssim_final_sr': metrics_final['ssim'],
             }
             all_results.append(result_row)
-        print("-" * 60)
+        print("-" * 70)
 
     if not all_results:
         print("评估完成，但没有成功处理任何图像对。")
         return
 
-        # --- 结果汇总与保存 ---
-        # 使用 pandas DataFrame 进行处理
+    # --- 结果汇总与保存 ---
     df = pd.DataFrame(all_results)
 
-    # 计算平均值
-    avg_psnr = df['psnr'].mean()
-    avg_ssim = df['ssim'].mean()
+    # 计算所有指标的平均值
+    avg_psnr_base = df['psnr_base'].mean()
+    avg_ssim_base = df['ssim_base'].mean()
+    avg_psnr_final = df['psnr_final_sr'].mean()
+    avg_ssim_final = df['ssim_final_sr'].mean()
 
     # 创建一个平均值行
     avg_row = pd.DataFrame([{
         'filename': 'Average',
-        'psnr': avg_psnr,
-        'ssim': avg_ssim
+        'psnr_base': avg_psnr_base,
+        'ssim_base': avg_ssim_base,
+        'psnr_final_sr': avg_psnr_final,
+        'ssim_final_sr': avg_ssim_final
     }])
 
     # 将平均值行添加到 DataFrame 的末尾
     df_final = pd.concat([df, avg_row], ignore_index=True)
 
     # 保存到 CSV 文件
-    output_csv_path = os.path.join(output_dir, 'evaluation_metrics.csv')
+    output_csv_path = os.path.join(output_dir, 'evaluation_metrics_comparison.csv')
     df_final.to_csv(output_csv_path, index=False, float_format='%.4f')
 
     print("\n--- 全局评估摘要 ---")
-    print(f"成功处理图像数量: {len(all_results)}")
-    print(f"平均 PSNR: {avg_psnr:.4f} dB")
-    print(f"平均 SSIM: {avg_ssim:.4f}")
-    print(f"详细结果已保存至: {output_csv_path}")
+    print(f"成功处理图像对数量: {len(all_results)}")
+    print(f"平均 PSNR (Base): {avg_psnr_base:.4f} dB")
+    print(f"平均 SSIM (Base): {avg_ssim_base:.4f}")
+    print(f"平均 PSNR (Final SR): {avg_psnr_final:.4f} dB")
+    print(f"平均 SSIM (Final SR): {avg_ssim_final:.4f}")
+    print(f"\n详细对比结果已保存至: {output_csv_path}")
     print("评估完成。")
 
 def create_test_data(input_image: str, output_dir: str, scale_factor: int = 4):
