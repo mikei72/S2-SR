@@ -94,6 +94,8 @@ pip install -r requirements.txt
 下载其中的HAT、RAM、和Stable Diffusion权重
 放在 models/weights 目录下
 
+修改 models/ram/models/ram.py 中 text_encoder_type 为你的地址
+
 ## 使用方法
 ★★★★★★★★★★当前运行demo.py
 
