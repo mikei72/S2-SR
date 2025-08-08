@@ -273,5 +273,5 @@ class SuperResolutionPipeline:
                 "image": hr_final,
                 "info": process_info
             })
-        
-        return results 
+
+        return results

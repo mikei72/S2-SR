@@ -4,6 +4,8 @@ torchvision>=0.15.0
 numpy>=1.21.0
 Pillow>=9.0.0
 opencv-python>=4.5.0
+basicsr
+basicsr-fixed
 
 # 扩散模型相关
 diffusers>=0.21.0
