@@ -22,7 +22,7 @@ sys.path.append(str(Path(__file__).parent))
 
 from config.config import Config
 from pipeline.super_resolution_pipeline import SuperResolutionPipeline
-from training.lora_trainer import LoRATrainer, prepare_training_data, SuperResolutionDataset
+from training.lora_trainer import DetailEnhancementTrainer, prepare_training_data, SuperResolutionRefinementDataset
 from utils.image_utils import load_image, save_image, create_low_resolution_image
 
 def process_single_image(input_path: str, 
@@ -136,39 +136,52 @@ def train_lora(train_data_dir: str,
                device: str = "cuda",
                ram_model_path: Optional[str] = None):
     """
-    训练LoRA
-    
+    训练LoRA (使用 DetailEnhancementTrainer 进行 ControlNet + LoRA 联合训练)
+
     Args:
-        train_data_dir: 训练数据目录
+        train_data_dir: 训练数据目录 (假设包含原始图和高清图，或已处理好的控制图)
         output_dir: 输出目录
-        base_model_path: 基础模型路径
+        base_model_path: 基础模型路径 (本地 Stable Diffusion v1.5 路径)
         num_epochs: 训练轮数
         batch_size: 批次大小
         learning_rate: 学习率
         device: 计算设备
-        ram_model_path: RAM模型路径
+        ram_model_path: RAM模型路径 (用于生成提示词)
     """
-    print("开始LoRA训练...")
-    
-    # 准备训练数据
-    prompt_file = os.path.join(output_dir, "training_prompts.txt")
-    prepare_training_data(train_data_dir, prompt_file, ram_model_path)
-    
-    # 创建数据集
-    train_dataset = SuperResolutionDataset(
+    print("开始 LoRA (ControlNet + LoRA) 联合训练...")
+
+    # --- 数据准备 ---
+    # 假设 prepare_training_data 生成一个包含图像文件名和对应 prompt 的 CSV 文件
+    # 这里使用 prompts.csv 作为文件名，与 DetailEnhancementTrainer 中的示例一致
+    prompt_file = os.path.join(output_dir, "prompts.csv")  # 或 train_data_dir
+    prepare_training_data(
         image_dir=train_data_dir,
-        prompt_file=prompt_file,
-        target_size=(512, 512)
+        output_prompt_file=prompt_file,
+        ram_model_path=ram_model_path
     )
-    
-    # 创建训练器
-    trainer = LoRATrainer(
-        base_model_path=base_model_path,
-        output_dir=output_dir,
-        device=device
+
+    # --- 数据集创建 ---
+    # 使用 SuperResolutionRefinementDataset，需要 control 图和 target 图
+    # 这里假设 train_data_dir 同时是 control_dir 和 target_dir
+    # 实际应用中，可能需要两个不同的目录，例如：
+    # control_dir = os.path.join(train_data_dir, "canny_edges")
+    # target_dir = os.path.join(train_data_dir, "high_resolution")
+    train_dataset = SuperResolutionRefinementDataset(
+        control_dir=train_data_dir,  # 控制图目录 (如 Canny 边缘)
+        target_dir=train_data_dir,  # 目标图目录 (高清原图)
+        prompt_file=prompt_file  # 提示词文件
     )
-    
-    # 开始训练
+
+    # --- 训练器创建 ---
+    # 使用 DetailEnhancementTrainer，它会处理 ControlNet 和 LoRA 的联合训练
+    trainer = DetailEnhancementTrainer(
+        base_model_path=base_model_path,  # 传入本地模型路径
+        output_dir=output_dir,  # 检查点输出目录
+        device=device,  # 计算设备
+        use_lora=True  # 明确使用 LoRA
+    )
+
+    # --- 开始训练 ---
     trainer.train(
         train_dataset=train_dataset,
         num_epochs=num_epochs,
@@ -176,8 +189,8 @@ def train_lora(train_data_dir: str,
         learning_rate=learning_rate,
         save_steps=Config.SAVE_STEPS
     )
-    
-    print("LoRA训练完成")
+
+    print("LoRA (ControlNet + LoRA) 联合训练完成")
 
 
 def evaluate_results(gt_dir: str,
@@ -357,6 +370,10 @@ def main():
     parser.add_argument("--epochs", type=int, default=Config.NUM_EPOCHS, help="训练轮数")
     parser.add_argument("--batch_size", type=int, default=Config.BATCH_SIZE, help="批次大小")
     parser.add_argument("--lr", type=float, default=Config.LEARNING_RATE, help="学习率")
+    parser.add_argument("--sd_model", type=str, default="models/weights/stable-diffusion-v1-5",
+                        help="基础模型路径")
+    parser.add_argument("--device", type=str, default="cuda", help="计算设备")
+    parser.add_argument("--ram_model", type=str, help="RAM模型路径（用于生成提示词）")
     
     # 评估
     parser.add_argument("--evaluate", action="store_true", help="评估结果")
@@ -379,7 +396,7 @@ def main():
         if not args.train_data:
             print("错误: 训练LoRA需要指定训练数据目录 (--train_data)")
             return
-        
+
         train_lora(
             train_data_dir=args.train_data,
             output_dir="checkpoints",
